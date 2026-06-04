@@ -1,5 +1,5 @@
-// Topic 1 — MULTIBRANCH
-// Demonstrates: branch detection, per-branch stage gates, manual approval before production
+// Topic 2 — PARALLEL
+// Demonstrates: parallel stages inside a single 'Verify' gate replacing the sequential 'Test' stage
 
 pipeline {
 
@@ -43,16 +43,36 @@ pipeline {
             }
         }
 
-        stage('Test') {
+        stage('Verify') {
             when {
                 not { expression { return params.SKIP_TESTS as boolean } }
             }
-            steps {
-                sh './mvnw test -B -ntp'
-            }
-            post {
-                always {
-                    junit testResults: 'target/surefire-reports/*.xml', allowEmptyResults: true
+            
+            parallel {
+
+                stage('Unit Tests') {
+                    steps {
+                        sh './mvnw test -B -ntp'
+                    }
+                    post {
+                        always { junit testResults: 'target/surefire-reports/*.xml', allowEmptyResults: true }
+                    }
+                }
+
+                stage('Integration Tests') {
+                    steps {
+                        sh './mvnw verify -B -ntp -Dsurefire.skip=true'
+                    }
+                    post {
+                        always { junit testResults: 'target/failsafe-reports/*.xml', allowEmptyResults: true }
+                    }
+                }
+
+                stage('Dependency Audit') {
+                    steps {
+                        sh './mvnw dependency:analyze -B -ntp 2>&1 | tail -30 || true'
+                        echo "Dependency audit complete"
+                    }
                 }
             }
         }
