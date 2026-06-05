@@ -1,5 +1,5 @@
-// Topic 4 — NOTIFICATIONS
-// Demonstrates: post{} block sending email on failure, recovery (unstable→success), and unstable builds
+// Topic 1 — MULTIBRANCH
+// Demonstrates: branch detection, per-branch stage gates, manual approval before production
 
 pipeline {
 
@@ -38,62 +38,26 @@ pipeline {
         }
 
         stage('Build') {
-            agent {
-                docker {
-                    image     'eclipse-temurin:25-jdk-noble'
-                    reuseNode true
-                    args      '-v $HOME/.m2:/root/.m2 --memory="1g"'
-                }
-            }
             steps {
                 sh './mvnw clean compile -B -ntp'
             }
         }
 
-        stage('Verify') {
+        stage('Test') {
             when {
                 not { expression { return params.SKIP_TESTS as boolean } }
             }
-            parallel {
-
-                stage('Unit Tests') {
-                    agent { docker { image 'eclipse-temurin:25-jdk-noble'; reuseNode true; args '-v $HOME/.m2:/root/.m2' } }
-                    steps {
-                        sh './mvnw test -B -ntp'
-                    }
-                    post {
-                        always { junit testResults: 'target/surefire-reports/*.xml', allowEmptyResults: true }
-                    }
-                }
-
-                stage('Integration Tests') {
-                    agent { docker { image 'eclipse-temurin:25-jdk-noble'; reuseNode true; args '-v $HOME/.m2:/root/.m2' } }
-                    steps {
-                        sh './mvnw verify -B -ntp -Dsurefire.skip=true'
-                    }
-                    post {
-                        always { junit testResults: 'target/failsafe-reports/*.xml', allowEmptyResults: true }
-                    }
-                }
-
-                stage('Dependency Audit') {
-                    agent { docker { image 'eclipse-temurin:25-jdk-noble'; reuseNode true; args '-v $HOME/.m2:/root/.m2' } }
-                    steps {
-                        sh './mvnw dependency:analyze -B -ntp 2>&1 | tail -30 || true'
-                        echo "Dependency audit complete"
-                    }
+            steps {
+                sh './mvnw test -B -ntp'
+            }
+            post {
+                always {
+                    junit testResults: 'target/surefire-reports/*.xml', allowEmptyResults: true
                 }
             }
         }
 
         stage('Package') {
-            agent {
-                docker {
-                    image     'eclipse-temurin:25-jdk-noble'
-                    reuseNode true
-                    args      '-v $HOME/.m2:/root/.m2'
-                }
-            }
             steps {
                 sh './mvnw package -DskipTests -B -ntp'
                 archiveArtifacts artifacts: 'target/*.jar', fingerprint: true, allowEmptyArchive: false
@@ -131,48 +95,6 @@ pipeline {
                 }
                 echo "[DEMO] Would deploy ${APP_NAME}:latest to PRODUCTION at http://localhost:8080"
             }
-        }
-    }
-
-    post {
-        always {
-            script {
-                echo "Result: ${currentBuild.currentResult} | Duration: ${currentBuild.durationString.replace(' and counting', '')}"
-            }
-        }
-
-        failure {
-            script {
-                mail to:      env.NOTIFY_EMAIL,
-                     subject: "[FAILED] ${env.JOB_NAME} #${env.BUILD_NUMBER} on ${env.BRANCH_NAME}",
-                     body:    """\
-Build FAILED — action required.
-
-Job      : ${env.JOB_NAME}
-Branch   : ${env.BRANCH_NAME}
-Build #  : ${env.BUILD_NUMBER}
-Commit   : ${env.GIT_COMMIT?.take(8) ?: 'unknown'}
-Duration : ${currentBuild.durationString}
-Console  : ${env.BUILD_URL}console
-"""
-            }
-        }
-
-        success {
-            script {
-                def prev = currentBuild.previousBuild?.result
-                if (prev == 'FAILURE' || prev == 'UNSTABLE') {
-                    mail to:      env.NOTIFY_EMAIL,
-                         subject: "[RECOVERED] ${env.JOB_NAME} is green on ${env.BRANCH_NAME}",
-                         body:    "Build recovered. See: ${env.BUILD_URL}"
-                }
-            }
-        }
-
-        unstable {
-            mail to:      env.NOTIFY_EMAIL,
-                 subject: "[UNSTABLE] ${env.JOB_NAME} #${env.BUILD_NUMBER} on ${env.BRANCH_NAME}",
-                 body:    "Tests failing. Review: ${env.BUILD_URL}"
         }
     }
 }
