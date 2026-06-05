@@ -1,5 +1,5 @@
-// Topic 2 — PARALLEL
-// Demonstrates: parallel stages inside a single 'Verify' gate replacing the sequential 'Test' stage
+// Topic 3 — DOCKER AGENTS
+// Demonstrates: per-stage Docker agents so each stage runs in an isolated, reproducible container
 
 pipeline {
 
@@ -38,6 +38,13 @@ pipeline {
         }
 
         stage('Build') {
+            agent {
+                docker {
+                    image     'eclipse-temurin:25-jdk-noble'
+                    reuseNode true
+                    args      '-v $HOME/.m2:/root/.m2 --memory="1g"'
+                }
+            }
             steps {
                 sh './mvnw clean compile -B -ntp'
             }
@@ -50,6 +57,7 @@ pipeline {
             parallel {
 
                 stage('Unit Tests') {
+                    agent { docker { image 'eclipse-temurin:25-jdk-noble'; reuseNode true; args '-v $HOME/.m2:/root/.m2' } }
                     steps {
                         sh './mvnw test -B -ntp'
                     }
@@ -59,6 +67,7 @@ pipeline {
                 }
 
                 stage('Integration Tests') {
+                    agent { docker { image 'eclipse-temurin:25-jdk-noble'; reuseNode true; args '-v $HOME/.m2:/root/.m2' } }
                     steps {
                         sh './mvnw verify -B -ntp -Dsurefire.skip=true'
                     }
@@ -68,6 +77,7 @@ pipeline {
                 }
 
                 stage('Dependency Audit') {
+                    agent { docker { image 'eclipse-temurin:25-jdk-noble'; reuseNode true; args '-v $HOME/.m2:/root/.m2' } }
                     steps {
                         sh './mvnw dependency:analyze -B -ntp 2>&1 | tail -30 || true'
                         echo "Dependency audit complete"
@@ -77,6 +87,13 @@ pipeline {
         }
 
         stage('Package') {
+            agent {
+                docker {
+                    image     'eclipse-temurin:25-jdk-noble'
+                    reuseNode true
+                    args      '-v $HOME/.m2:/root/.m2'
+                }
+            }
             steps {
                 sh './mvnw package -DskipTests -B -ntp'
                 archiveArtifacts artifacts: 'target/*.jar', fingerprint: true, allowEmptyArchive: false
