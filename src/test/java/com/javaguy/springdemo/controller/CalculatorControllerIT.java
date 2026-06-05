@@ -18,7 +18,7 @@ class CalculatorControllerIT {
 
     @Test
     void add_returnsCorrectResult() throws Exception {
-        mockMvc.perform(get("/api/calculator/add").param("a", "10").param("b", "5"))
+        mockMvc.perform(get("/api/calculator/addygghgfdtrdx").param("a", "10").param("b", "5"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.result").value(15.0));
     }

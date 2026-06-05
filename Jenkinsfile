@@ -1,5 +1,5 @@
-// Topic 3 — DOCKER AGENTS
-// Demonstrates: per-stage Docker agents so each stage runs in an isolated, reproducible container
+// Topic 4 — NOTIFICATIONS
+// Demonstrates: post{} block sending email on failure, recovery (unstable→success), and unstable builds
 
 pipeline {
 
@@ -131,6 +131,48 @@ pipeline {
                 }
                 echo "[DEMO] Would deploy ${APP_NAME}:latest to PRODUCTION at http://localhost:8080"
             }
+        }
+    }
+
+    post {
+        always {
+            script {
+                echo "Result: ${currentBuild.currentResult} | Duration: ${currentBuild.durationString.replace(' and counting', '')}"
+            }
+        }
+
+        failure {
+            script {
+                mail to:      env.NOTIFY_EMAIL,
+                     subject: "[FAILED] ${env.JOB_NAME} #${env.BUILD_NUMBER} on ${env.BRANCH_NAME}",
+                     body:    """\
+Build FAILED — action required.
+
+Job      : ${env.JOB_NAME}
+Branch   : ${env.BRANCH_NAME}
+Build #  : ${env.BUILD_NUMBER}
+Commit   : ${env.GIT_COMMIT?.take(8) ?: 'unknown'}
+Duration : ${currentBuild.durationString}
+Console  : ${env.BUILD_URL}console
+"""
+            }
+        }
+
+        success {
+            script {
+                def prev = currentBuild.previousBuild?.result
+                if (prev == 'FAILURE' || prev == 'UNSTABLE') {
+                    mail to:      env.NOTIFY_EMAIL,
+                         subject: "[RECOVERED] ${env.JOB_NAME} is green on ${env.BRANCH_NAME}",
+                         body:    "Build recovered. See: ${env.BUILD_URL}"
+                }
+            }
+        }
+
+        unstable {
+            mail to:      env.NOTIFY_EMAIL,
+                 subject: "[UNSTABLE] ${env.JOB_NAME} #${env.BUILD_NUMBER} on ${env.BRANCH_NAME}",
+                 body:    "Tests failing. Review: ${env.BUILD_URL}"
         }
     }
 }
